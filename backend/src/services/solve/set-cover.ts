@@ -40,6 +40,7 @@ import { DARKRAI, ingredient } from 'sleepapi-common';
 export class SetCover {
   private ingredientProducers: IngredientProducers; // flat array of all ingredient producers
   private ingredientProducersWithSettings: IngredientProducersWithSettings;
+  private producerHashes: string[];
   private producersByIngredientIndexOriginal: Array<Array<number>>; // used to reset the producersByIngredientIndex between solves
   private producersByIngredientIndex: Array<Array<number>>; // each index of outer array maps to each ingredient's index in INGREDIENTS array, each inner array contains the indices of the producers that can produce that ingredient
   private cachedSubRecipeSolves: Map<number, Array<Array<number>>>; // a map of subrecipe memo key to an array of solutions, where each solution is an array of indices that point to the producer in ingredientProducers
@@ -83,6 +84,7 @@ export class SetCover {
 
     this.ingredientProducers = filteredProducers;
     this.ingredientProducersWithSettings = filteredProducersWithSettings;
+    this.producerHashes = filteredProducers.map((p) => hashPokemonSetIndexed(p.pokemonSet));
     this.producersByIngredientIndex = producersByIngredientIndexWithoutDarkrai;
     this.producersByIngredientIndexOriginal = producersByIngredientIndexWithoutDarkraiOriginal;
 
@@ -305,17 +307,21 @@ export class SetCover {
     const foundSolutions: Set<string> = new Set();
     const teams: SolveRecipeSolution[] = [];
     for (const memberIndices of solutions) {
-      const members = memberIndices.map((memberIndex) => this.ingredientProducersWithSettings[memberIndex]);
-      members.sort((a, b) => {
-        const hashA = hashPokemonSetIndexed(a.pokemonSet).toString();
-        const hashB = hashPokemonSetIndexed(b.pokemonSet).toString();
-        return hashA.localeCompare(hashB);
-      });
+      const sortedIndices =
+        memberIndices.length > 1
+          ? [...memberIndices].sort((a, b) => this.producerHashes[a].localeCompare(this.producerHashes[b]))
+          : memberIndices;
 
-      const foundSolution = members.map((member) => hashPokemonSetIndexed(member.pokemonSet)).join(',');
+      let foundSolution = '';
+      for (let i = 0, len = sortedIndices.length; i < len; i++) {
+        if (i > 0) foundSolution += ',';
+        foundSolution += this.producerHashes[sortedIndices[i]];
+      }
+
       if (!foundSolutions.has(foundSolution)) {
         foundSolutions.add(foundSolution);
 
+        const members = sortedIndices.map((memberIndex) => this.ingredientProducersWithSettings[memberIndex]);
         const combinedIngredientProduction = combineProduction(members);
         teams.push({
           members,

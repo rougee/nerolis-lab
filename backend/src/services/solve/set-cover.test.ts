@@ -596,5 +596,74 @@ describe('SetCover', () => {
 
       expect(result.exhaustive).toBe(false);
     });
+
+    it('should deduplicate permuted member indices and sort members deterministically', () => {
+      const producersToAdd = [
+        mocks.setCoverPokemonWithSettings({
+          totalIngredients: new Int16Array([1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0]),
+          pokemonSet: { ingredients: new Int16Array(), pokemon: 'MemberB' }
+        }),
+        mocks.setCoverPokemonWithSettings({
+          totalIngredients: new Int16Array([1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+          pokemonSet: { ingredients: new Int16Array(), pokemon: 'MemberA' }
+        })
+      ];
+
+      ingredientProducers.push(...producersToAdd);
+
+      setCover = new SetCover(ingredientProducers, producersByIngredientIndex, cachedSubRecipeSolves);
+      const { formatResult } = setCover._testAccess();
+
+      const solutions: RecipeSolutions = [
+        [0, 1],
+        [1, 0]
+      ];
+
+      const result = formatResult({ solutions, startTime: Date.now(), timeout: 1000 });
+
+      expect(result.teams).toHaveLength(1);
+      expect(result.teams[0].members.map((m) => m.pokemonSet.pokemon)).toEqual(['MemberA', 'MemberB']);
+    });
+
+    it('should benchmark formatResult over 2,000 3-member solutions across 20 calls', () => {
+      for (let i = 0; i < 20; i++) {
+        const ing = new Int16Array(ingredient.TOTAL_NUMBER_OF_INGREDIENTS);
+        ing[i % ingredient.TOTAL_NUMBER_OF_INGREDIENTS] = (i + 1) * 3;
+        ingredientProducers.push(
+          mocks.setCoverPokemonWithSettings({
+            totalIngredients: ing,
+            pokemonSet: { ingredients: ing, pokemon: `Producer_${i}` }
+          })
+        );
+      }
+
+      setCover = new SetCover(ingredientProducers, producersByIngredientIndex, cachedSubRecipeSolves);
+      const { formatResult } = setCover._testAccess();
+
+      const solutions: RecipeSolutions = [];
+      for (let i = 0; i < 2000; i++) {
+        const a = i % 20;
+        const b = (i + 3) % 20;
+        const c = (i + 7) % 20;
+        solutions.push(i % 2 === 0 ? [a, b, c] : [c, b, a]);
+      }
+
+      const start = performance.now();
+      let lastResult = formatResult({ solutions, startTime: Date.now(), timeout: 10000 });
+      for (let call = 1; call < 20; call++) {
+        lastResult = formatResult({ solutions, startTime: Date.now(), timeout: 10000 });
+      }
+      const totalMs = Number((performance.now() - start).toFixed(2));
+      const perCallMs = Number((totalMs / 20).toFixed(2));
+
+      console.info(
+        '[BENCHMARK:perf/solver-and-tierlist-caching:SetCover.formatResult]',
+        JSON.stringify({ calls: 20, solutionsPerCall: 2000, totalMs, perCallMs })
+      );
+
+      expect(lastResult.exhaustive).toBe(true);
+      expect(lastResult.teams.length).toBeGreaterThan(0);
+      expect(totalMs).toBeLessThan(500);
+    });
   });
 });
