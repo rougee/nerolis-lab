@@ -1,3 +1,4 @@
+import type { IslandBaseDto } from '../../types';
 import { berry, CYAN, GREENGRASS, GREENGRASS_EXPERT, ISLANDS } from '../../types';
 import { defaultIslandBerries, getIsland, hasCustomBerries, islandInstanceToDto } from './island-utils';
 
@@ -66,10 +67,16 @@ describe('hasCustomBerries', () => {
 });
 
 describe('islandInstanceToDto', () => {
-  it('removes definition-only fields', () => {
+  it('removes definition-only fields and satisfies IslandBaseDto', () => {
     const island = { ...CYAN, areaBonus: 20 };
+    const dto = islandInstanceToDto(island);
+    const baseDto: IslandBaseDto = { name: dto.name, shortName: dto.shortName };
 
-    expect(islandInstanceToDto(island)).toEqual({
+    expect(baseDto).toEqual({
+      name: island.name,
+      shortName: island.shortName
+    });
+    expect(dto).toEqual({
       name: island.name,
       shortName: island.shortName,
       areaBonus: island.areaBonus,

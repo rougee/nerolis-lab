@@ -4,9 +4,12 @@ import type { ExpertModeBonuses, ExpertModeSettings, ExpertRandomBonusType } fro
 export type IslandShortName =
   'greengrass' | 'cyan' | 'taupe' | 'snowdrop' | 'lapis' | 'powerplant' | 'amber' | 'GGEX' | 'CBEX';
 
-interface IslandBase {
+export interface IslandBaseDto {
   name: string;
   shortName: IslandShortName;
+}
+
+export interface IslandBase extends IslandBaseDto {
   rankThresholds: number[];
 }
 
@@ -43,11 +46,11 @@ export type ExpertIslandInstance = ExpertIsland & {
  */
 export type IslandInstance = BaseIslandInstance | ExpertIslandInstance;
 
-export type IslandInstanceDto = Pick<IslandBase, 'name' | 'shortName'> & {
+export interface IslandInstanceDto extends IslandBaseDto {
   areaBonus: number;
   berries: Berry[];
   expertMode?: ExpertModeSettings;
-};
+}
 
 /**
  * Factory for expert island definitions. Derives `name` from the base island as
