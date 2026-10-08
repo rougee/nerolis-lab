@@ -93,16 +93,16 @@
         <v-col v-for="{ path, pokemon, instance } in filteredPokemon" :key="instance.externalId" class="flex-center">
           <div class="flex-column align-center">
             <div v-if="pokemonSearchStore.showPokebox && instance" class="text-center text-caption mb-1">
-              <div>Level {{ instance.level }}</div>
+              <div>{{ isPokemonDisabled(instance) ? 'In team' : `Level ${instance.level}` }}</div>
             </div>
             <v-avatar
               color="secondary"
-              class="cursor-pointer"
+              :class="isPokemonDisabled(instance) ? 'pokemon-disabled' : 'cursor-pointer'"
               @click="selectPokemon(instance)"
               :size="isMobile ? 60 : 100"
               rounded="lg"
             >
-              <v-img :src="path"></v-img>
+              <v-img :src="path" :class="{ grayscale: isPokemonDisabled(instance) }"></v-img>
             </v-avatar>
             <div
               v-if="pokemonSearchStore.showPokebox"
@@ -145,11 +145,13 @@ import CustomChip from '@/components/custom-components/custom-chip/CustomChip.vu
 import DropdownSort from '@/components/custom-components/dropdown-sort/DropdownSort.vue'
 import CustomSearchBar from '@/components/custom-components/search-bar/CustomSearchBar.vue'
 import { useBreakpoint } from '@/composables/use-breakpoint/use-breakpoint'
+import { RouteName } from '@/router/router'
 import { UserService } from '@/services/user/user-service'
 import { avatarImage } from '@/services/utils/image-utils'
 import { PokemonInstanceUtils } from '@/services/utils/pokemon-instance-utils'
 import { useDialogStore } from '@/stores/dialog-store/dialog-store'
 import { usePokemonSearchStore } from '@/stores/pokemon-search-store'
+import { useTeamStore } from '@/stores/team/team-store'
 import { useUserStore } from '@/stores/user-store'
 import {
   capitalize,
@@ -160,6 +162,7 @@ import {
   type PokemonSpecialty
 } from 'sleepapi-common'
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 const emit = defineEmits<{
   cancel: []
@@ -175,6 +178,8 @@ export interface PokemonWithPath {
 const pokemonSearchStore = usePokemonSearchStore()
 const userStore = useUserStore()
 const dialogStore = useDialogStore()
+const teamStore = useTeamStore()
+const route = useRoute()
 
 const searchQuery = ref('')
 const selectedSpecialties = ref<PokemonSpecialty[]>([])
@@ -325,14 +330,28 @@ const filteredPokemon: ComputedRef<PokemonWithPath[]> = computed(() => {
   return sorted
 })
 
+const isPokemonDisabled = (instance: PokemonInstance): boolean => {
+  if (!pokemonSearchStore.showPokebox || route.name !== RouteName.Calculator) {
+    return false
+  }
+  const currentSlotId =
+    dialogStore.pokemonInputProps.preSelectedPokemonInstance?.externalId ??
+    dialogStore.pokemonSearchCurrentInstance?.externalId
+  return instance.externalId !== currentSlotId && teamStore.getCurrentTeam.members.includes(instance.externalId)
+}
+
 const selectFirstOption = () => {
-  const firstOption = filteredPokemon.value[0]
+  const firstOption = filteredPokemon.value.find((p) => !isPokemonDisabled(p.instance))
   if (firstOption) {
     selectPokemon(firstOption.instance)
   }
 }
 
 const selectPokemon = (instance: PokemonInstance) => {
+  if (isPokemonDisabled(instance)) {
+    return
+  }
+
   if (dialogStore.pokemonSearchCallback) {
     // If selecting from Pokebox, use the instance directly
     if (pokemonSearchStore.showPokebox) {
@@ -450,5 +469,10 @@ watch(
 
 .min-width-0 {
   min-width: 0;
+}
+
+.pokemon-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

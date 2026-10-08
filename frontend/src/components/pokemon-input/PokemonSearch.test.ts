@@ -1,10 +1,14 @@
 import PokemonSearch from '@/components/pokemon-input/PokemonSearch.vue'
+import router, { RouteName } from '@/router/router'
+import { UserService } from '@/services/user/user-service'
 import { PokemonInstanceUtils } from '@/services/utils/pokemon-instance-utils'
 import { useDialogStore } from '@/stores/dialog-store/dialog-store'
 import { usePokemonSearchStore } from '@/stores/pokemon-search-store'
+import { useTeamStore } from '@/stores/team/team-store'
+import { useUserStore } from '@/stores/user-store'
 import type { VueWrapper } from '@vue/test-utils'
-import { mount } from '@vue/test-utils'
-import { BULBASAUR, COMPLETE_POKEDEX, DARKRAI, ingredient } from 'sleepapi-common'
+import { flushPromises, mount } from '@vue/test-utils'
+import { BULBASAUR, CHARIZARD, commonMocks, COMPLETE_POKEDEX, DARKRAI, ingredient } from 'sleepapi-common'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
@@ -431,6 +435,97 @@ describe('PokemonSearch', () => {
       const longNameResults = wrapper.findAll('.v-avatar')
 
       expect(longNameResults.length).toBe(shortNameResults.length)
+    })
+  })
+
+  describe('Pokebox Duplicate Team Member Prevention', () => {
+    it('disables Pokebox Pokemon already in another slot on Calculator while keeping own slot and Compare enabled', async () => {
+      await router.push({ name: RouteName.Calculator })
+
+      const userStore = useUserStore()
+      userStore.auth = commonMocks.loginResponse().auth
+
+      const teamStore = useTeamStore()
+      teamStore.getCurrentTeam.members = ['in-team-id', 'own-slot-id', undefined, undefined, undefined]
+
+      const inTeamMon = PokemonInstanceUtils.createDefaultPokemonInstance(CHARIZARD, {
+        externalId: 'in-team-id',
+        name: 'Teamzard',
+        saved: true
+      })
+      const ownSlotMon = PokemonInstanceUtils.createDefaultPokemonInstance(BULBASAUR, {
+        externalId: 'own-slot-id',
+        name: 'Slotbasaur',
+        saved: true
+      })
+
+      vi.mocked(UserService.getUserPokemon).mockResolvedValueOnce([inTeamMon, ownSlotMon])
+
+      const callback = vi.fn()
+      // Editing Slot 1 (ownSlotMon): inTeamMon (Slot 0) should be disabled, ownSlotMon should remain selectable
+      dialogStore.openPokemonSearch(callback, ownSlotMon)
+      pokemonSearchStore.showPokebox = true
+
+      const localWrapper = mount(PokemonSearch)
+      await flushPromises()
+      await nextTick()
+
+      expect(localWrapper.text()).toContain('In team')
+      expect(localWrapper.text()).toContain(`Level ${ownSlotMon.level}`)
+
+      const avatars = localWrapper.findAll('.v-avatar')
+      expect(avatars).toHaveLength(2)
+      expect(avatars[0].classes()).toContain('pokemon-disabled')
+      expect(avatars[1].classes()).toContain('cursor-pointer')
+
+      // Clicking the disabled in-team Pokemon should be ignored
+      await avatars[0].trigger('click')
+      expect(callback).not.toHaveBeenCalled()
+
+      // Navigating to Compare should re-enable inTeamMon
+      await router.push({ name: RouteName.Compare })
+      await nextTick()
+      expect(localWrapper.findAll('.v-avatar')[0].classes()).toContain('cursor-pointer')
+
+      localWrapper.unmount()
+    })
+
+    it('skips disabled Pokebox Pokemon when pressing Enter to select first option', async () => {
+      await router.push({ name: RouteName.Calculator })
+
+      const userStore = useUserStore()
+      userStore.auth = commonMocks.loginResponse().auth
+
+      const teamStore = useTeamStore()
+      teamStore.getCurrentTeam.members = ['in-team-bulba', undefined, undefined, undefined, undefined]
+
+      const inTeamMon = PokemonInstanceUtils.createDefaultPokemonInstance(BULBASAUR, {
+        externalId: 'in-team-bulba',
+        name: 'Teambasaur',
+        saved: true
+      })
+      const availableMon = PokemonInstanceUtils.createDefaultPokemonInstance(CHARIZARD, {
+        externalId: 'available-zard',
+        name: 'Boxzard',
+        saved: true
+      })
+
+      vi.mocked(UserService.getUserPokemon).mockResolvedValueOnce([inTeamMon, availableMon])
+
+      const callback = vi.fn()
+      dialogStore.openPokemonSearch(callback)
+      pokemonSearchStore.showPokebox = true
+
+      const localWrapper = mount(PokemonSearch)
+      await flushPromises()
+      await nextTick()
+
+      const searchInput = localWrapper.find('input[type="text"]')
+      await searchInput.trigger('keydown.enter')
+
+      expect(callback).toHaveBeenCalledWith(expect.objectContaining({ externalId: 'available-zard' }))
+
+      localWrapper.unmount()
     })
   })
 })
